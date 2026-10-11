@@ -1,0 +1,178 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Purple Sparkle Castle</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap">
+<style>
+/* Layout: full-screen 3D world, hotbar pinned bottom, start card centered. Single dreamy-purple look in both themes. */
+:root{--ink:#2a0f52;--card:#fff4fe;--accent:#9b4dff;--glow:#ffd6ff;--sel:#ffcf3d;--display:'Fredoka',ui-rounded,'Segoe UI',system-ui,sans-serif;color-scheme:light}
+html,body{height:100%;margin:0;overflow:hidden;background:#c9b6ff;font-family:var(--display);color:var(--ink)}
+canvas{display:block}
+#cross{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 3px #000}
+#cross:before{left:8px;top:0;width:2px;height:18px}#cross:after{top:8px;left:0;height:2px;width:18px}
+#bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:4px;padding:5px;background:rgba(42,15,82,.55);border-radius:10px;max-width:calc(100% - 32px);overflow-x:auto}
+.slot{width:44px;height:44px;flex:none;border:3px solid transparent;border-radius:6px;background-size:cover;image-rendering:pixelated;cursor:pointer;position:relative}
+.slot.on{border-color:var(--sel);box-shadow:0 0 10px var(--sel)}
+.slot span{position:absolute;left:3px;top:1px;font-size:11px;color:#fff;text-shadow:0 0 2px #000}
+#name{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));color:#fff;text-shadow:0 1px 3px #000;font-weight:700;font-size:18px}
+#start{position:fixed;inset:0;display:grid;place-items:center;background:rgba(60,20,110,.45);padding-inline:16px}
+#start .c{background:var(--card);border-radius:18px;padding:24px 28px;max-width:420px;box-shadow:0 10px 40px rgba(80,0,160,.5)}
+h1{margin:0 0 6px;font-size:34px;color:var(--accent);text-wrap:balance;text-shadow:0 0 12px var(--glow)}
+p{margin:6px 0;line-height:1.45}
+kbd{background:#ecdcff;border-radius:4px;padding:1px 6px;font-family:inherit}
+button{font:inherit;font-weight:700;font-size:20px;margin-top:12px;padding:10px 26px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer;box-shadow:0 0 18px var(--glow)}
+button:focus-visible{outline:3px solid var(--sel)}
+</style>
+<div id="cross"></div>
+<div id="name"></div>
+<div id="bar"></div>
+<div id="start"><div class="c">
+<h1>Purple Sparkle Castle ✨</h1>
+<p>A shiny, glittery purple castle with a basement, four floors and a door on the roof. Walk in the front door and take the stairs all the way up!</p>
+<p><kbd>W A S D</kbd> walk · <kbd>Space</kbd> jump · mouse to look<br>
+<kbd>Left click</kbd> break · <kbd>Right click</kbd> build<br>
+<kbd>1</kbd>–<kbd>9</kbd> or scroll to pick a block · <kbd>F</kbd> fly (<kbd>Shift</kbd> goes down)</p>
+<button id="play">Play</button>
+</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const DEF=[null,
+ {n:'Grass',c:'#5fae3c',s:'#4a8f2c'},{n:'Dirt',c:'#8a5a34',s:'#6e4526'},{n:'Stone',c:'#8d8a96',s:'#6f6c78'},
+ {n:'Wood',c:'#a7743f',s:'#7d5428'},{n:'Castle Purple',c:'#9b4dff',s:'#8236ea',g:1},{n:'Amethyst',c:'#6a25c9',s:'#561aa8',g:1},
+ {n:'Pink Glass',c:'#ffc4f2',s:'#ffffff',t:1},{n:'Glow Lamp',c:'#fff0ff',s:'#ffb3f5',e:1},{n:'Gold',c:'#ffcf3d',s:'#e0a800',g:1}];
+const G=1,D=2,ST=3,W=4,PU=5,AM=6,GL=7,LA=8,GO=9;
+function tex(d){const c=document.createElement('canvas');c.width=c.height=16;const x=c.getContext('2d');x.fillStyle=d.c;x.fillRect(0,0,16,16);
+ for(let i=0;i<40;i++){x.fillStyle=d.s;x.fillRect(Math.random()*16|0,Math.random()*16|0,1,1)}
+ if(d.g)for(let i=0;i<10;i++){x.fillStyle=Math.random()<.5?'#fff':'#ffd6ff';x.fillRect(Math.random()*16|0,Math.random()*16|0,1,1)}
+ if(d.t){x.strokeStyle='#fff';x.strokeRect(.5,.5,15,15)}return c}
+const canv=DEF.map(d=>d&&tex(d));
+function T(c){const t=new THREE.CanvasTexture(c);t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;return t}
+// glitter: a sparkle mask redrawn every few frames so specks twinkle
+const gc=document.createElement('canvas');gc.width=gc.height=16;const gx=gc.getContext('2d');const gt=T(gc);
+function glitter(){gx.fillStyle='#000';gx.fillRect(0,0,16,16);for(let i=0;i<9;i++){gx.fillStyle=Math.random()<.4?'#fff':'#ff9cf0';gx.fillRect(Math.random()*16|0,Math.random()*16|0,1,1)}gt.needsUpdate=true}
+glitter();
+const mats=DEF.map((d,i)=>{if(!d)return null;const map=T(canv[i]);
+ if(d.e)return new THREE.MeshBasicMaterial({map});
+ if(d.t)return new THREE.MeshLambertMaterial({map,transparent:true,opacity:.55,depthWrite:false});
+ if(d.g)return new THREE.MeshPhongMaterial({map,shininess:90,specular:0xffffff,emissive:0xffffff,emissiveMap:gt,emissiveIntensity:1.4});
+ return new THREE.MeshLambertMaterial({map})});
+
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));document.body.prepend(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color('#c9b6ff');scene.fog=new THREE.Fog('#c9b6ff',30,70);
+const camera=new THREE.PerspectiveCamera(75,1,.05,200);camera.rotation.order='YXZ';
+scene.add(new THREE.HemisphereLight(0xffffff,0x8a6abf,.85));const sun=new THREE.DirectionalLight(0xffffff,.6);sun.position.set(20,40,-15);scene.add(sun);
+
+// world
+const world=new Map(),K=(x,y,z)=>(x+128)*65536+(y+128)*256+(z+128);
+const get=(x,y,z)=>world.get(K(x,y,z)),set=(x,y,z,t)=>t?world.set(K(x,y,z),t):world.delete(K(x,y,z));
+const R=24;
+for(let x=-R;x<R;x++)for(let z=-R;z<R;z++){const far=Math.hypot(x,z)>14;
+ const h=far?Math.max(0,Math.round(1.3*Math.sin(x*.21)+1.3*Math.cos(z*.18))):0;
+ for(let y=-9;y<=h;y++)set(x,y,z,y===h?G:y>h-3?D:ST)}
+function tree(x,z){let y=0;while(get(x,y+1,z))y++;for(let i=1;i<5;i++)set(x,y+i,z,W);
+ for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++)for(let c=3;c<=6;c++)if(Math.abs(a)+Math.abs(b)+(c-4)<4&&!get(x+a,y+c,z+b))set(x+a,y+c,z+b,c===6?LA:G)}
+[[-17,-10],[16,-15],[-15,15],[18,10],[-19,2],[10,19]].forEach(p=>tree(...p));
+// castle: basement + 4 floors + roof
+const S=8,F=[-6,0,5,10,15,20];
+for(let x=-S;x<=S;x++)for(let z=-S;z<=S;z++)for(let y=-6;y<=20;y++){
+ const edge=Math.abs(x)===S||Math.abs(z)===S,corner=Math.abs(x)===S&&Math.abs(z)===S;
+ if(F.includes(y))set(x,y,z,(x+z)&1?AM:PU);
+ else if(edge){const along=Math.abs(x)===S?z:x,ly=(y+20)%5;
+  set(x,y,z,corner?AM:(y>0&&(ly===2||ly===3)&&((along%4)+4)%4===2?GL:PU))}
+ else set(x,y,z,0)}
+for(let x=-S;x<=S;x++)for(let z=-S;z<=S;z++)if((Math.abs(x)===S||Math.abs(z)===S)&&!((x+z)&1))set(x,21,z,PU);
+for(const cx of[-S,S])for(const cz of[-S,S]){for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)for(let y=-1;y<=24;y++)set(cx+a,y,cz+b,AM);
+ for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)set(cx+a,25,cz+b,GO);set(cx,26,cz,LA)}
+// front door + gold arch + stone path
+for(let x=-1;x<=1;x++)for(let y=1;y<=3;y++)set(x,y,-S,0);for(let x=-2;x<=2;x++)set(x,4,-S,GO);set(-2,3,-S,GO);set(2,3,-S,GO);
+for(let z=-R;z<-S;z++)for(let x=-1;x<=1;x++){set(x,0,z,ST);for(let y=1;y<4;y++)set(x,y,z,0)}
+// stairs between every level
+for(let k=0;k<5;k++){const f=F[k],n=F[k+1]-f-1,xs=k%2?[-6,-5]:[5,6];
+ for(const x of xs){for(let i=0;i<n;i++)set(x,f+1+i,-6+i,W);for(let z=-9+n;z<=-7+n;z++)set(x,F[k+1],z,0)}}
+// lamps on every floor ceiling, throne on top floor
+for(let k=0;k<5;k++){set(0,F[k+1]-1,0,LA);set(0,F[k+1]-1,4,LA);set(0,F[k+1]-1,-4,LA)}
+set(0,16,6,GO);set(0,16,7,GO);set(0,17,7,GO);set(0,18,7,LA);set(-1,16,7,GO);set(1,16,7,GO);
+// roof door: little hut over the top of the stairs
+for(let x=4;x<=7;x++)for(let z=-7;z<=-1;z++)for(let y=21;y<=24;y++){
+ const wall=x===4||x===7||z===-7||z===-1;if(y===24)set(x,y,z,GO);else if(wall&&!(z===-1&&(x===5||x===6)&&y<23))set(x,y,z,AM)}
+
+// rendering: one instanced mesh per block type, only blocks with an open side
+const geo=new THREE.BoxGeometry(1,1,1),mtx=new THREE.Matrix4();let meshes=[];
+const opaque=(x,y,z)=>{const t=get(x,y,z);return t&&t!==GL};
+function rebuild(){meshes.forEach(m=>{scene.remove(m);m.dispose()});meshes=[];const L=DEF.map(()=>[]);
+ for(const[k,t]of world){const x=Math.floor(k/65536)-128,y=(Math.floor(k/256)&255)-128,z=(k&255)-128;
+  if(!opaque(x+1,y,z)||!opaque(x-1,y,z)||!opaque(x,y+1,z)||!opaque(x,y-1,z)||!opaque(x,y,z+1)||!opaque(x,y,z-1))L[t].push(x,y,z)}
+ L.forEach((l,t)=>{if(!t||!l.length)return;const m=new THREE.InstancedMesh(geo,mats[t],l.length/3);
+  for(let i=0;i<l.length;i+=3){mtx.makeTranslation(l[i]+.5,l[i+1]+.5,l[i+2]+.5);m.setMatrixAt(i/3,mtx)}
+  if(t===GL)m.renderOrder=1;scene.add(m);meshes.push(m)})}
+rebuild();
+for(let k=0;k<5;k++){const l=new THREE.PointLight(0xff9cf0,.7,14);l.position.set(0,F[k+1]-2,0);scene.add(l)}
+
+// sparkles floating around the castle
+const sc=document.createElement('canvas');sc.width=sc.height=32;const sx=sc.getContext('2d');
+const rg=sx.createRadialGradient(16,16,0,16,16,16);rg.addColorStop(0,'#fff');rg.addColorStop(.25,'#ffd6ff');rg.addColorStop(1,'rgba(255,150,240,0)');
+sx.fillStyle=rg;sx.fillRect(0,0,32,32);sx.fillStyle='#fff';sx.fillRect(15,0,2,32);sx.fillRect(0,15,32,2);
+const spark=[];for(let s=0;s<3;s++){const N=260,p=new Float32Array(N*3);
+ for(let i=0;i<N;i++){p[i*3]=(Math.random()-.5)*24;p[i*3+1]=Math.random()*30-2;p[i*3+2]=(Math.random()-.5)*24}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));
+ const pts=new THREE.Points(g,new THREE.PointsMaterial({map:T(sc),size:.45,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,color:[0xffffff,0xffb3f5,0xd9b3ff][s]}));
+ scene.add(pts);spark.push(pts)}
+
+// player
+const P={p:new THREE.Vector3(.5,1,-18),v:new THREE.Vector3(),on:false,yaw:Math.PI,pitch:0,fly:false};
+function hits(p){for(let x=Math.floor(p.x-.3);x<=Math.floor(p.x+.3);x++)for(let y=Math.floor(p.y);y<=Math.floor(p.y+1.7);y++)
+ for(let z=Math.floor(p.z-.3);z<=Math.floor(p.z+.3);z++)if(get(x,y,z))return true;return false}
+function moveAxis(a,d){const p=P.p;p[a]+=d;if(!hits(p))return;
+ if(a!=='y'&&P.on){const oy=p.y;p.y=Math.floor(p.y+.01)+1;if(!hits(p))return;p.y=oy}
+ p[a]-=d;if(a==='y'){if(d<0)P.on=true;P.v.y=0}}
+const keys={};let sel=PU;
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code>='Digit1'&&e.code<='Digit9')pick(+e.code[5]);if(e.code==='KeyF'){P.fly=!P.fly;P.v.y=0}});
+addEventListener('keyup',e=>keys[e.code]=false);
+// hotbar
+const bar=document.getElementById('bar'),nameEl=document.getElementById('name');let nameT=0;
+DEF.forEach((d,i)=>{if(!d)return;const s=document.createElement('div');s.className='slot';s.style.backgroundImage=`url(${canv[i].toDataURL()})`;
+ s.innerHTML=`<span>${i}</span>`;s.title=d.n;s.onclick=e=>{e.stopPropagation();pick(i)};bar.append(s)});
+function pick(i){sel=i;[...bar.children].forEach((s,j)=>s.classList.toggle('on',j+1===i));nameEl.textContent=DEF[i].n;nameT=2}
+pick(PU);
+addEventListener('wheel',e=>pick(((sel-1+(e.deltaY>0?1:8))%9)+1));
+// look + pointer lock (falls back to click-and-drag if the browser refuses the lock)
+const start=document.getElementById('start'),cv=renderer.domElement;let locked=false,free=false,drag=0,down=false;
+document.getElementById('play').onclick=()=>{start.hidden=true;free=true;try{const r=cv.requestPointerLock();r&&r.catch&&r.catch(()=>{})}catch(e){}};
+document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===cv;if(!locked&&!free)start.hidden=false});
+cv.addEventListener('click',()=>{if(!locked&&free){try{const r=cv.requestPointerLock();r&&r.catch&&r.catch(()=>{})}catch(e){}}});
+addEventListener('mousemove',e=>{if(locked||(free&&down)){P.yaw-=e.movementX*.0025;P.pitch=Math.max(-1.55,Math.min(1.55,P.pitch-e.movementY*.0025));drag+=Math.abs(e.movementX)+Math.abs(e.movementY)}});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('mousedown',e=>{down=true;drag=0;if(locked)act(e.button)});
+cv.addEventListener('mouseup',e=>{down=false;if(!locked&&free&&drag<6)act(e.button)});
+// aim: step through voxels along the view ray
+const dir=new THREE.Vector3();
+function ray(){camera.getWorldDirection(dir);const o=camera.position;let x=Math.floor(o.x),y=Math.floor(o.y),z=Math.floor(o.z),prev=null;
+ const st=[Math.sign(dir.x),Math.sign(dir.y),Math.sign(dir.z)],dl=[Math.abs(1/dir.x),Math.abs(1/dir.y),Math.abs(1/dir.z)];
+ const tm=[0,1,2].map(i=>{const oi=[o.x,o.y,o.z][i],c=[x,y,z][i];return st[i]>0?(c+1-oi)*dl[i]:st[i]<0?(oi-c)*dl[i]:Infinity});
+ for(let n=0;n<40;n++){if(get(x,y,z))return{h:[x,y,z],p:prev};prev=[x,y,z];const a=tm[0]<tm[1]?(tm[0]<tm[2]?0:2):(tm[1]<tm[2]?1:2);
+  if(tm[a]>7)return null;tm[a]+=dl[a];if(a===0)x+=st[0];else if(a===1)y+=st[1];else z+=st[2]}return null}
+function act(b){const r=ray();if(!r)return;
+ if(b===0){if(r.h[1]>-9){set(...r.h,0);rebuild()}}
+ else if(b===2&&r.p){set(...r.p,sel);if(hits(P.p))set(...r.p,0);else rebuild()}}
+const box=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01,1.01,1.01)),new THREE.LineBasicMaterial({color:0xffffff}));scene.add(box);
+
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let last=performance.now(),gt0=0;
+function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/1000),t=now/1000;last=now;
+ const f=(keys.KeyW?1:0)-(keys.KeyS?1:0),r=(keys.KeyD?1:0)-(keys.KeyA?1:0),sp=P.fly?9:5;
+ const vx=(-Math.sin(P.yaw)*f+Math.cos(P.yaw)*r)*sp,vz=(-Math.cos(P.yaw)*f-Math.sin(P.yaw)*r)*sp;
+ if(P.fly)P.v.y=((keys.Space?1:0)-(keys.ShiftLeft||keys.ShiftRight?1:0))*sp;
+ else{P.v.y-=25*dt;if(keys.Space&&P.on)P.v.y=8.5}
+ P.on=false;moveAxis('x',vx*dt);moveAxis('z',vz*dt);moveAxis('y',P.v.y*dt);
+ if(P.p.y<-20){P.p.set(.5,1,-18);P.v.set(0,0,0)}
+ camera.position.set(P.p.x,P.p.y+1.55,P.p.z);camera.rotation.set(P.pitch,P.yaw,0);
+ const h=ray();box.visible=!!h;if(h)box.position.set(h.h[0]+.5,h.h[1]+.5,h.h[2]+.5);
+ if(!reduce&&(gt0+=dt)>.12){gt0=0;glitter()}
+ spark.forEach((s,i)=>{s.material.opacity=.45+.55*Math.abs(Math.sin(t*(1.3+i*.7)+i*2));if(!reduce){s.position.y=(t*.4*(i+1))%4;s.rotation.y=t*.03*(i+1)}});
+ if(nameT>0){nameT-=dt;nameEl.style.opacity=Math.min(1,nameT)}
+ renderer.render(scene,camera)}
+requestAnimationFrame(loop);
+</script>
+
+</body></html>
